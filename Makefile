@@ -2,16 +2,16 @@ GOPATH=/usr/local/lib/go:${PWD}
 export GOPATH
 GO=go
 
-STUBS := message
+STUBS := message replicainfo
 
-.PHONY: stubs
+.PHONY: stubs replica client
 
-all: bin/replica bin/client
+all: replica client
 
-bin/replica: src/replica/replica.go
+replica:
 	${GO} install replica
 
-bin/client: src/client/client.go
+client:
 	${GO} install client
 
 gobin-codegen/src/bi/bi.go:
@@ -24,7 +24,7 @@ bin/bi: gobin-codegen/src/bi/bi.go
 
 stubs: bin/bi
 	$(foreach stub, ${STUBS}, \
-		bin/bi src/${stub}/${stub}.go > src/${stub}/${stub}_stub.go)
+		bin/bi src/${stub}/${stub}.go > src/${stub}/${stub}_stub.go;)
 
 clean:
 	rm -rf bin/*

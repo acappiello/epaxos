@@ -1,0 +1,105 @@
+package state
+
+import (
+	"io"
+	"sync"
+	"bufio"
+	"encoding/binary"
+)
+
+type byteReader interface {
+	io.Reader
+	ReadByte() (c byte, err error)
+}
+
+func (t *State) BinarySize() (nbytes int, sizeKnown bool) {
+	return 0, false
+}
+
+type StateCache struct {
+	mu	sync.Mutex
+	cache	[]*State
+}
+
+func NewStateCache() *StateCache {
+	c := &StateCache{}
+	c.cache = make([]*State, 0)
+	return c
+}
+
+func (p *StateCache) Get() *State {
+	var t *State
+	p.mu.Lock()
+	if len(p.cache) > 0 {
+		t = p.cache[len(p.cache)-1]
+		p.cache = p.cache[0:(len(p.cache) - 1)]
+	}
+	p.mu.Unlock()
+	if t == nil {
+		t = &State{}
+	}
+	return t
+}
+func (p *StateCache) Put(t *State) {
+	p.mu.Lock()
+	p.cache = append(p.cache, t)
+	p.mu.Unlock()
+}
+func (t *State) Marshal(wire io.Writer) {
+	var b [16]byte
+	var bs []byte
+	t.Self.Marshal(wire)
+	bs = b[:]
+	alen1 := int64(len(t.Peers))
+	if wlen := binary.PutVarint(bs, alen1); wlen >= 0 {
+		wire.Write(b[0:wlen])
+	}
+	for i := int64(0); i < alen1; i++ {
+		t.Peers[i].Marshal(wire)
+	}
+	tmp64 := t.nextPeer
+	bs[0] = byte(tmp64)
+	bs[1] = byte(tmp64 >> 8)
+	bs[2] = byte(tmp64 >> 16)
+	bs[3] = byte(tmp64 >> 24)
+	bs[4] = byte(tmp64 >> 32)
+	bs[5] = byte(tmp64 >> 40)
+	bs[6] = byte(tmp64 >> 48)
+	bs[7] = byte(tmp64 >> 56)
+	tmp64 = t.nPeers
+	bs[8] = byte(tmp64)
+	bs[9] = byte(tmp64 >> 8)
+	bs[10] = byte(tmp64 >> 16)
+	bs[11] = byte(tmp64 >> 24)
+	bs[12] = byte(tmp64 >> 32)
+	bs[13] = byte(tmp64 >> 40)
+	bs[14] = byte(tmp64 >> 48)
+	bs[15] = byte(tmp64 >> 56)
+	wire.Write(bs)
+}
+
+func (t *State) Unmarshal(rr io.Reader) error {
+	var wire byteReader
+	var ok bool
+	if wire, ok = rr.(byteReader); !ok {
+		wire = bufio.NewReader(rr)
+	}
+	var b [16]byte
+	var bs []byte
+	t.Self.Unmarshal(wire)
+	alen1, err := binary.ReadVarint(wire)
+	if err != nil {
+		return err
+	}
+	t.Peers = make([]replicainfo.ReplicaInfo, alen1)
+	for i := int64(0); i < alen1; i++ {
+		t.Peers[i].Unmarshal(wire)
+	}
+	bs = b[:16]
+	if _, err := io.ReadAtLeast(wire, bs, 16); err != nil {
+		return err
+	}
+	t.nextPeer = int((uint64(bs[0]) | (uint64(bs[1]) << 8) | (uint64(bs[2]) << 16) | (uint64(bs[3]) << 24) | (uint64(bs[4]) << 32) | (uint64(bs[5]) << 40) | (uint64(bs[6]) << 48) | (uint64(bs[7]) << 56)))
+	t.nPeers = int((uint64(bs[8]) | (uint64(bs[9]) << 8) | (uint64(bs[10]) << 16) | (uint64(bs[11]) << 24) | (uint64(bs[12]) << 32) | (uint64(bs[13]) << 40) | (uint64(bs[14]) << 48) | (uint64(bs[15]) << 56)))
+	return nil
+}

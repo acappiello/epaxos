@@ -1,0 +1,6 @@
+package replicainfo
+
+type Replica struct {
+    hostname []byte
+    port int
+}
