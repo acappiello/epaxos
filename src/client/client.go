@@ -1,12 +1,13 @@
 package main
 
 import (
+    "bufio"
     "flag"
     "fmt"
+    "net"
     "strconv"
 
     "message"
-    "util"
 )
 
 var host *string = flag.String("h", "localhost",
@@ -20,11 +21,12 @@ func main() {
     fmt.Println("Port is: " + strconv.Itoa(*port))
 
     nreq := 10
+    conn, _ := net.Dial("tcp", fmt.Sprintf("%s:%d", *host, *port))
+    buf := bufio.NewWriter(conn)
     for i := 0; i < nreq; i++ {
-        fmt.Printf("%d\n", i)
         m := message.GetRequest(i)
-        conn := util.NewConn(*host, *port)
-        m.Marshal(conn)
-        conn.Flush()
+        m.Marshal(buf)
+        buf.Flush()
     }
+    conn.Close()
 }
