@@ -1,6 +1,7 @@
 package main
 
 import (
+    "bufio"
     "flag"
     "fmt"
     "net"
@@ -10,7 +11,6 @@ import (
     "listener"
     "message"
     "state"
-    "util"
 )
 
 var port *int = flag.Int("p", 5000, "Port. Default: 5000")
@@ -34,28 +34,29 @@ func main() {
         return
     }
 
-    if len(*connect) > 0 {
-        fmt.Println("Registering self.")
-        conn := util.NewConn(*connect, *connectPort)
-        host, _ := os.Hostname()
-        m := message.AddHost(host, *port)
-        m.Marshal(conn)
-        conn.Flush()
-    }
-    for i := 0; i < *nReplica-1; i++ {
-        fmt.Printf("Waiting %d...\n", i)
-        conn, err := ln.Accept()
-        fmt.Println("Accepted.")
-        if err != nil {
-            fmt.Fprintln(os.Stderr, "Bad connection.")
-            continue
-        }
-        state.NewConnection(conn)
-        fmt.Printf("Complete %d...\n", i)
-    }
     if len(*connect) == 0 {
+        for i := 0; i < *nReplica-1; i++ {
+            fmt.Printf("Waiting %d...\n", i)
+            conn, err := ln.Accept()
+            fmt.Println("Accepted.")
+            if err != nil {
+                fmt.Fprintln(os.Stderr, "Bad connection.")
+                continue
+            }
+            state.NewConnection(conn)
+            fmt.Printf("Complete %d...\n", i)
+        }
         fmt.Println("Sending host info.")
         state.SendHosts()
+    } else {
+        fmt.Println("Registering self.")
+        conn, _ := net.Dial("tcp", fmt.Sprintf("%s:%d", *connect, *connectPort))
+        buf := bufio.NewWriter(conn)
+        host, _ := os.Hostname()
+        m := message.AddHost(host, *port)
+        m.Send(buf)
+        fmt.Println("Getting Peers.")
+        state.GetPeers(conn)
     }
     fmt.Println("Done.")
 

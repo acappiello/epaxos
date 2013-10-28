@@ -1,6 +1,7 @@
 package message
 
 import (
+    "bufio"
     "fmt"
 
     "replicainfo"
@@ -43,4 +44,9 @@ func GetRequest(key int) *Message {
     m.Key = key
     fmt.Println(m)
     return m
+}
+
+func (m *Message) Send(wire *bufio.Writer) {
+    m.Marshal(wire)
+    wire.Flush()
 }

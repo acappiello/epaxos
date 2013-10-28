@@ -25,8 +25,7 @@ func main() {
     buf := bufio.NewWriter(conn)
     for i := 0; i < nreq; i++ {
         m := message.GetRequest(i)
-        m.Marshal(buf)
-        buf.Flush()
+        m.Send(buf)
     }
     conn.Close()
 }
