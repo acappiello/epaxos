@@ -7,6 +7,7 @@ import (
     "os"
     "strconv"
 
+    "listener"
     "message"
     "state"
     "util"
@@ -57,4 +58,12 @@ func main() {
         state.SendHosts()
     }
     fmt.Println("Done.")
+
+    l := listener.NewListener(ln)
+    go l.Listen()
+    for {
+        m := l.Get()
+
+        fmt.Println(m)
+    }
 }
