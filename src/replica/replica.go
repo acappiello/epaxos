@@ -35,17 +35,8 @@ func main() {
     }
 
     if len(*connect) == 0 {
-        for i := 0; i < *nReplica-1; i++ {
-            fmt.Printf("Waiting %d...\n", i)
-            conn, err := ln.Accept()
-            fmt.Println("Accepted.")
-            if err != nil {
-                fmt.Fprintln(os.Stderr, "Bad connection.")
-                continue
-            }
-            state.NewConnection(conn)
-            fmt.Printf("Complete %d...\n", i)
-        }
+        fmt.Println("Waiting for peers.")
+        state.WaitForPeers(ln)
         fmt.Println("Sending host info.")
         state.SendHosts()
     } else {

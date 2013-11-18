@@ -41,13 +41,20 @@ func (s *State) registerConnection(conn net.Conn, i int) {
     s.Writers[i] = bufio.NewWriter(conn)
 }
 
-func (s *State) NewConnection(conn net.Conn) {
+func (s *State) WaitForPeers(ln net.Listener) {
     m := &message.Message{}
-    s.registerConnection(conn, s.nextPeer)
-    m.Unmarshal(s.Readers[s.nextPeer])
-    fmt.Printf("%s:%d\n", string(m.Rep.Hostname), m.Rep.Port)
-    s.Peers[s.nextPeer] = m.Rep
-    s.nextPeer++
+    for i := 0; i < s.nPeers; i++ {
+        conn, err := ln.Accept()
+        if err != nil {
+            fmt.Fprintln(os.Stderr, "Bad connection.")
+            continue
+        }
+        s.registerConnection(conn, s.nextPeer)
+        m.Unmarshal(s.Readers[s.nextPeer])
+        fmt.Printf("%s:%d\n", string(m.Rep.Hostname), m.Rep.Port)
+        s.Peers[s.nextPeer] = m.Rep
+        s.nextPeer++
+    }
 }
 
 func (s *State) GetPeers(wire net.Conn) {

@@ -15,11 +15,17 @@ const (
     CONNECT
     HOSTLIST
     ADDHOST
+    PREACCEPT
+    PREACCEPTOK
+    ACCEPT
+    ACCEPTOK
+    COMMIT
 )
 
 const (
-    PUT ReqType = iota
-    GET
+    READ ReqType = iota
+    EXECUTE
+    EXECUTEANDREAD
 )
 
 type Message struct {
@@ -40,7 +46,7 @@ func AddHost(host string, port int) *Message {
 func GetRequest(key int) *Message {
     m := new(Message)
     m.T = REQUEST
-    m.R = GET
+    m.R = READ
     m.Key = key
     fmt.Println(m)
     return m
