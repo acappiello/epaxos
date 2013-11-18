@@ -1,12 +1,12 @@
 package util
 
 import (
-    "bufio"
-    "fmt"
-    "net"
+	"bufio"
+	"fmt"
+	"net"
 )
 
 func NewConn(host string, port int) *bufio.Writer {
-    conn, _ := net.Dial("tcp", fmt.Sprintf("%s:%d", host, port))
-    return bufio.NewWriter(conn)
+	conn, _ := net.Dial("tcp", fmt.Sprintf("%s:%d", host, port))
+	return bufio.NewWriter(conn)
 }

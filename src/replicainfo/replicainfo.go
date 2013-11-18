@@ -1,6 +1,6 @@
 package replicainfo
 
 type ReplicaInfo struct {
-    Hostname []byte
-    Port int
+	Hostname []byte
+	Port     int
 }
