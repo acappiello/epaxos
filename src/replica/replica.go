@@ -56,6 +56,8 @@ func main() {
 	for {
 		m := l.Get()
 
-		fmt.Println(m)
+		fmt.Println("~~~", m)
+
+		state.AddTasks(m)
 	}
 }

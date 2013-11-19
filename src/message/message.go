@@ -29,10 +29,10 @@ const (
 )
 
 type Message struct {
-	T   MsgType
-	R   ReqType
-	Key int
-	Rep replicainfo.ReplicaInfo
+	T     MsgType
+	R     ReqType
+	Rep   replicainfo.ReplicaInfo
+	Tasks []Task
 }
 
 func AddHost(host string, port int) *Message {
@@ -47,7 +47,8 @@ func GetRequest(key int) *Message {
 	m := new(Message)
 	m.T = REQUEST
 	m.R = READ
-	m.Key = key
+	m.Tasks = make([]Task, 1)
+	m.Tasks[0].Key = key
 	fmt.Println(m)
 	return m
 }
@@ -55,4 +56,9 @@ func GetRequest(key int) *Message {
 func (m *Message) Send(wire *bufio.Writer) {
 	m.Marshal(wire)
 	wire.Flush()
+}
+
+type Task struct {
+	Key    int
+	HostId int
 }

@@ -4,7 +4,7 @@ GO=go
 
 STUBS := message replicainfo
 
-.PHONY: stubs replica client
+.PHONY: stubs replica client fmt
 
 all: replica client
 
@@ -25,6 +25,9 @@ bin/bi: gobin-codegen/src/bi/bi.go
 stubs: bin/bi
 	$(foreach stub, ${STUBS}, \
 		bin/bi src/${stub}/${stub}.go > src/${stub}/${stub}_stub.go;)
+
+fmt:
+	cd src; ${GO} fmt *
 
 clean:
 	rm -rf bin/*
