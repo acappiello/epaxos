@@ -27,7 +27,7 @@ func (l *Listener) Get() message.Message {
 	return <-l.messages
 }
 
-func (l *Listener) handleConnection(conn net.Conn) {
+func (l *Listener) HandleConnection(conn net.Conn) {
 	m := &message.Message{}
 	buffered := bufio.NewReader(conn)
 	for {
@@ -47,6 +47,6 @@ func (l *Listener) Listen() {
 			fmt.Fprintln(os.Stderr, "Bad connection.")
 			continue
 		}
-		go l.handleConnection(conn)
+		go l.HandleConnection(conn)
 	}
 }

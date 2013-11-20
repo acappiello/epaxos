@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 
+	"listener"
 	"message"
 	"replicainfo"
 )
@@ -23,6 +24,9 @@ type State struct {
 	nextPeer    int
 	nPeers      int
 	instance    uint32
+
+	serverSocket net.Listener
+	Listener     *listener.Listener
 
 	clientTasksIn    chan message.Task
 	preacceptTasksIn chan message.Task
@@ -51,8 +55,9 @@ func getkey(rep replicainfo.ReplicaInfo) mapkey {
 	}
 }
 
-func Initialize(port int, nreplica int) *State {
-	s := new(State)
+func Initialize(port int, nreplica int) (s *State, err error) {
+	s = new(State)
+	err = nil
 	// TODO: Handle error.
 	host, _ := os.Hostname()
 	s.Self.Hostname = []byte(host)
@@ -64,6 +69,12 @@ func Initialize(port int, nreplica int) *State {
 	s.Writers = make([]*bufio.Writer, nreplica-1)
 	s.nextPeer = 0
 	s.nPeers = nreplica - 1
+
+	s.serverSocket, err = net.Listen("tcp", fmt.Sprintf(":%d", port))
+	if err != nil {
+		return
+	}
+	s.Listener = listener.NewListener(s.serverSocket)
 
 	s.clientTasksIn = make(chan message.Task, CHANSIZE)
 	s.preacceptTasksIn = make(chan message.Task, CHANSIZE)
@@ -79,21 +90,16 @@ func Initialize(port int, nreplica int) *State {
 	s.okTasksOut = make(chan message.Task, CHANSIZE)
 	s.adminTasksOut = make(chan message.Task, CHANSIZE)
 
-	go s.ProcessIncoming()
-	go s.ProcessOutgoing()
-
-	return s
+	return
 }
 
-func (s *State) listenToPeer(reader *bufio.Reader) {
-	m := message.Message{}
+func (s *State) Run() {
+	go s.ProcessIncoming()
+	go s.ProcessOutgoing()
+	go s.Listener.Listen()
 	for {
-		err := m.Unmarshal(reader)
-		if err != nil {
-			// TODO: Reconnect if dies.
-			fmt.Println("Read error: ", err)
-			return
-		}
+		m := s.Listener.Get()
+		//fmt.Println(m)
 		s.AddTasks(m)
 	}
 }
@@ -102,13 +108,13 @@ func (s *State) registerConnection(conn net.Conn, i int) {
 	s.Connections[i] = conn
 	s.Readers[i] = bufio.NewReader(conn)
 	s.Writers[i] = bufio.NewWriter(conn)
-	go s.listenToPeer(s.Readers[i])
+	go s.Listener.HandleConnection(conn)
 }
 
-func (s *State) WaitForPeers(ln net.Listener) {
+func (s *State) WaitForPeers() {
 	m := &message.Message{}
 	for i := 0; i < s.nPeers; i++ {
-		conn, err := ln.Accept()
+		conn, err := s.serverSocket.Accept()
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "Bad connection.")
 			continue
@@ -136,6 +142,7 @@ func (s *State) GetPeers(wire net.Conn) {
 			}
 			s.registerConnection(conn, s.nextPeer)
 		} else {
+			fmt.Printf("i: %d\n", i)
 			s.Connections[i] = wire
 			s.Readers[i] = buf
 			s.Writers[i] = bufio.NewWriter(wire)
@@ -144,7 +151,7 @@ func (s *State) GetPeers(wire net.Conn) {
 		s.PeerMap[getkey(m.Rep)] = i
 		s.nextPeer++
 	}
-	go s.listenToPeer(s.Readers[0])
+	go s.Listener.HandleConnection(wire)
 }
 
 func (s *State) connect(i int) *bufio.Writer {
@@ -266,8 +273,8 @@ func (s *State) ProcessOutgoing() {
 		case t := <-s.preacceptTasksOut:
 			tsk = batch(s.preacceptTasksOut, t)
 			fmt.Println("SEND PREACCEPT", tsk)
+			s.SendToAll(tsk)
 			//case t:= <-s.clientTasksOut:
 		}
-		s.SendToAll(tsk)
 	}
 }

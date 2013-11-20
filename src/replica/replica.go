@@ -8,7 +8,6 @@ import (
 	"os"
 	"strconv"
 
-	"listener"
 	"message"
 	"state"
 )
@@ -26,8 +25,8 @@ func main() {
 	fmt.Println("Hello, replica.")
 	fmt.Println("Port is: " + strconv.Itoa(*port))
 
-	state := state.Initialize(*port, *nReplica)
-	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", *port))
+	state, err := state.Initialize(*port, *nReplica)
+	//ln, err := net.Listen("tcp", fmt.Sprintf(":%d", *port))
 
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Unable to listen on port %d\n", *port)
@@ -36,7 +35,7 @@ func main() {
 
 	if len(*connect) == 0 {
 		fmt.Println("Waiting for peers.")
-		state.WaitForPeers(ln)
+		state.WaitForPeers()
 		fmt.Println("Sending host info.")
 		state.SendHosts()
 	} else {
@@ -51,13 +50,5 @@ func main() {
 	}
 	fmt.Println("Done.")
 
-	l := listener.NewListener(ln)
-	go l.Listen()
-	for {
-		m := l.Get()
-
-		fmt.Println("~~~", m)
-
-		state.AddTasks(m)
-	}
+	state.Run()
 }
