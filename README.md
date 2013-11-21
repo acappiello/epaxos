@@ -24,7 +24,7 @@ the underlying code is changed.
 ```
 make marshal
 ```
-The reset is straightforward:
+The rest is straightforward:
 ```
 make
 ```
