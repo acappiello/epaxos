@@ -4,7 +4,7 @@ GO=go
 
 MARSHAL := message replicainfo
 
-.PHONY: stubs replica client fmt
+.PHONY: marshal replica client fmt
 
 all: replica client
 
@@ -24,7 +24,8 @@ bin/bi: gobin-codegen/src/bi/bi.go
 
 marshal: bin/bi
 	$(foreach marshal, ${MARSHAL}, \
-		bin/bi src/${marshal}/${marshal}.go > src/${marshal}/${marshal}_stub.go;)
+		bin/bi src/${marshal}/${marshal}.go > \
+			src/${marshal}/${marshal}_marshal.go; )
 
 fmt:
 	cd src; ${GO} fmt *
@@ -32,3 +33,4 @@ fmt:
 clean:
 	rm -rf bin/*
 	rm `find . -iname "*_marshal.go"`
+	rm `find -regex ".+~\|.+/#.+#"`
