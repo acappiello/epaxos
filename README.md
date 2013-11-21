@@ -24,7 +24,7 @@ Instead of committing the generated marshal/unmarahal code, it is generated,
 cloning gobin-codegen if not present. These must be explicitly regenerated if
 the underlying code is changed.
 ```
-make stubs
+make marshal
 ```
 The reset is straightforward:
 ```

@@ -1,3 +1,5 @@
+// Package main is the entry point for a client.
+// The workload isn't very interesting right now.
 package main
 
 import (
@@ -24,7 +26,7 @@ func main() {
 	conn, _ := net.Dial("tcp", fmt.Sprintf("%s:%d", *host, *port))
 	buf := bufio.NewWriter(conn)
 	for i := 0; i < nreq; i++ {
-		m := message.GetRequest(i)
+		m := message.ReadRequest(i)
 		m.Send(buf)
 	}
 	conn.Close()

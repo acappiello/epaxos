@@ -2,7 +2,7 @@ GOPATH=/usr/local/lib/go:${PWD}
 export GOPATH
 GO=go
 
-STUBS := message replicainfo
+MARSHAL := message replicainfo
 
 .PHONY: stubs replica client fmt
 
@@ -22,13 +22,13 @@ bin/bi: gobin-codegen/src/bi/bi.go
 	mkdir -p bin
 	cp gobin-codegen/src/bi/bi bin/bi
 
-stubs: bin/bi
-	$(foreach stub, ${STUBS}, \
-		bin/bi src/${stub}/${stub}.go > src/${stub}/${stub}_stub.go;)
+marshal: bin/bi
+	$(foreach marshal, ${MARSHAL}, \
+		bin/bi src/${marshal}/${marshal}.go > src/${marshal}/${marshal}_stub.go;)
 
 fmt:
 	cd src; ${GO} fmt *
 
 clean:
 	rm -rf bin/*
-	rm `find . -iname "*_stub.go"`
+	rm `find . -iname "*_marshal.go"`

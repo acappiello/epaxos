@@ -1,3 +1,5 @@
+// Package message contains data structures to keep track of tasks and messages
+// that move between replicas as well as clients.
 package message
 
 import (
@@ -32,9 +34,12 @@ type Message struct {
 	T     MsgType
 	R     ReqType
 	Rep   replicainfo.ReplicaInfo
+	// All tasks in the same message must be from the same source and be
+	// of the same type.
 	Tasks []Task
 }
 
+// AddHost creates a message for a replica that needs to join the group.
 func AddHost(host string, port int) *Message {
 	m := new(Message)
 	m.T = ADDHOST
@@ -43,7 +48,8 @@ func AddHost(host string, port int) *Message {
 	return m
 }
 
-func GetRequest(key int) *Message {
+// ReadRequest creates a message for a READ request from a client.
+func ReadRequest(key int) *Message {
 	m := new(Message)
 	m.T = REQUEST
 	m.R = READ
@@ -53,6 +59,7 @@ func GetRequest(key int) *Message {
 	return m
 }
 
+// Send is a shortcut to send a message and flush the buffer.
 func (m *Message) Send(wire *bufio.Writer) {
 	m.Marshal(wire)
 	wire.Flush()
