@@ -10,8 +10,6 @@ Current State
 The current goal is to simulate the fast path commit. So, for now, nothing will
 ever generate a dependency.
 
-Communication between replicas is currently buggy and will be fixed ASAP.
-
 Not Yet Implemented
 -------------------
 
