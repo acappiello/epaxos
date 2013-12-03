@@ -3,72 +3,63 @@ package state
 
 import (
 	"bufio"
+	"encoding/gob"
 	"fmt"
 	"net"
 	"os"
 
+	"commands"
 	"listener"
 	"message"
 	"replicainfo"
 )
 
-// BATCHSIZE is the maximum number of Tasks to send in a single Message.
+// BATCHSIZE is the maximum number of Commands to send in a single Message.
 const BATCHSIZE int = 100
+
 // CHANSIZE is the size that channels are created with.
 const CHANSIZE int = 100
 
 // State holds all vital information about the replica.
 type State struct {
 	// Self is used to identify this replica in outgoing Messages.
-	Self        replicainfo.ReplicaInfo
+	Self replicainfo.ReplicaInfo
 	// Information about all other known replicas.
-	Peers       []replicainfo.ReplicaInfo
+	Peers []replicainfo.ReplicaInfo
 	// PeerMap is used to get the index of a particular replica in the slices.
-	PeerMap     map[mapkey]int
+	PeerMap map[int]int
 	// Connections is a cache of sockets to other replicas.
 	Connections []net.Conn
 	// Readers is a cache of buffered readers to other replicas.
-	Readers     []*bufio.Reader
+	Readers []*bufio.Reader
 	// Writers is a cache of buffered writers to other replicas.
-	Writers     []*bufio.Writer
+	Writers []*bufio.Writer
+
+	data *commands.Data
 
 	// nPeers is the number of other replicas.
-	nPeers      int
+	nPeers int
 	// instance is the current instance for this replica.
-	instance    uint32
+	instance uint32
 
 	serverSocket net.Listener
 	listener     *listener.Listener
 
 	// Channels for unprocessed tasks.
-	clientTasksIn    chan message.Task
-	preacceptTasksIn chan message.Task
-	acceptTasksIn    chan message.Task
-	commitTasksIn    chan message.Task
-	okTasksIn        chan message.Task
-	adminTasksIn     chan message.Task
+	clientCommandsIn    chan commands.Command
+	preacceptCommandsIn chan commands.Command
+	acceptCommandsIn    chan commands.Command
+	commitCommandsIn    chan commands.Command
+	okCommandsIn        chan commands.Command
+	adminCommandsIn     chan commands.Command
 
 	// Channels for tasks that have not yet been sent.
-	clientTasksOut    chan message.Task
-	preacceptTasksOut chan message.Task
-	acceptTasksOut    chan message.Task
-	commitTasksOut    chan message.Task
-	okTasksOut        chan message.Task
-	adminTasksOut     chan message.Task
-}
-
-// mapkey is used as keys in PeerMap.
-type mapkey struct {
-	host string
-	port int
-}
-
-// getkey will uniquely identify a replica in PeerMap.
-func getkey(rep replicainfo.ReplicaInfo) mapkey {
-	return mapkey{
-		string(rep.Hostname),
-		rep.Port,
-	}
+	clientCommandsOut    chan commands.Command
+	preacceptCommandsOut chan commands.Command
+	acceptCommandsOut    chan commands.Command
+	commitCommandsOut    chan commands.Command
+	okCommandsOut        chan commands.Command
+	adminCommandsOut     chan commands.Command
 }
 
 // Initialize sets the startup state of the repica.
@@ -79,12 +70,17 @@ func Initialize(port int, nreplica int) (s *State, err error) {
 	host, _ := os.Hostname()
 	s.Self.Hostname = []byte(host)
 	s.Self.Port = port
+	s.Self.Id = -2
 	s.Peers = make([]replicainfo.ReplicaInfo, nreplica-1)
-	s.PeerMap = make(map[mapkey]int)
+	s.PeerMap = make(map[int]int)
 	s.Connections = make([]net.Conn, nreplica-1)
 	s.Readers = make([]*bufio.Reader, nreplica-1)
 	s.Writers = make([]*bufio.Writer, nreplica-1)
+
+	s.data = commands.InitData()
+
 	s.nPeers = nreplica - 1
+	s.instance = 0
 
 	s.serverSocket, err = net.Listen("tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
@@ -92,19 +88,21 @@ func Initialize(port int, nreplica int) (s *State, err error) {
 	}
 	s.listener = listener.NewListener(s.serverSocket)
 
-	s.clientTasksIn = make(chan message.Task, CHANSIZE)
-	s.preacceptTasksIn = make(chan message.Task, CHANSIZE)
-	s.acceptTasksIn = make(chan message.Task, CHANSIZE)
-	s.commitTasksIn = make(chan message.Task, CHANSIZE)
-	s.okTasksIn = make(chan message.Task, CHANSIZE)
-	s.adminTasksIn = make(chan message.Task, CHANSIZE)
+	s.clientCommandsIn = make(chan commands.Command, CHANSIZE)
+	s.preacceptCommandsIn = make(chan commands.Command, CHANSIZE)
+	s.acceptCommandsIn = make(chan commands.Command, CHANSIZE)
+	s.commitCommandsIn = make(chan commands.Command, CHANSIZE)
+	s.okCommandsIn = make(chan commands.Command, CHANSIZE)
+	s.adminCommandsIn = make(chan commands.Command, CHANSIZE)
 
-	s.clientTasksOut = make(chan message.Task, CHANSIZE)
-	s.preacceptTasksOut = make(chan message.Task, CHANSIZE)
-	s.acceptTasksOut = make(chan message.Task, CHANSIZE)
-	s.commitTasksOut = make(chan message.Task, CHANSIZE)
-	s.okTasksOut = make(chan message.Task, CHANSIZE)
-	s.adminTasksOut = make(chan message.Task, CHANSIZE)
+	s.clientCommandsOut = make(chan commands.Command, CHANSIZE)
+	s.preacceptCommandsOut = make(chan commands.Command, CHANSIZE)
+	s.acceptCommandsOut = make(chan commands.Command, CHANSIZE)
+	s.commitCommandsOut = make(chan commands.Command, CHANSIZE)
+	s.okCommandsOut = make(chan commands.Command, CHANSIZE)
+	s.adminCommandsOut = make(chan commands.Command, CHANSIZE)
+
+	gob.Register(commands.Slot{})
 
 	return
 }
@@ -117,7 +115,7 @@ func (s *State) Run() {
 	for {
 		m := s.listener.Get()
 		//fmt.Println(m)
-		s.AddTasks(m)
+		s.AddCommands(m)
 	}
 }
 
@@ -144,8 +142,9 @@ func (s *State) WaitForPeers() {
 		s.registerConnection(conn, nextPeer)
 		m.Unmarshal(s.Readers[nextPeer])
 		fmt.Printf("%s:%d\n", string(m.Rep.Hostname), m.Rep.Port)
+		m.Rep.Id = nextPeer
 		s.Peers[nextPeer] = m.Rep
-		s.PeerMap[getkey(m.Rep)] = nextPeer
+		s.PeerMap[nextPeer] = nextPeer
 		nextPeer++
 	}
 }
@@ -155,6 +154,8 @@ func (s *State) WaitForPeers() {
 func (s *State) GetPeers(wire net.Conn) {
 	buf := bufio.NewReader(wire)
 	m := &message.Message{}
+	m.Unmarshal(buf)
+	s.Self.Id = m.Rep.Id
 	nextPeer := 0
 	for i := 0; i < s.nPeers; i++ {
 		m.Unmarshal(buf)
@@ -168,13 +169,12 @@ func (s *State) GetPeers(wire net.Conn) {
 			s.registerConnection(conn, nextPeer)
 		} else {
 			// Reuse the existing connection.
-			fmt.Printf("i: %d\n", i)
 			s.Connections[i] = wire
 			s.Readers[i] = buf
 			s.Writers[i] = bufio.NewWriter(wire)
 		}
 		s.Peers[i] = m.Rep
-		s.PeerMap[getkey(m.Rep)] = i
+		s.PeerMap[m.Rep.Id] = i
 		nextPeer++
 	}
 	go s.listener.HandleConnection(wire)
@@ -185,43 +185,42 @@ func (s *State) GetPeers(wire net.Conn) {
 func (s *State) SendHosts() {
 	for i := 0; i < s.nPeers; i++ {
 		buf := s.Writers[i]
-		m := message.AddHost(string(s.Self.Hostname), s.Self.Port)
+		m := message.AddReplica(s.Peers[i])
+		m.Send(buf)
+		m = message.AddReplica(s.Self)
 		m.Send(buf)
 		for j := 0; j < s.nPeers; j++ {
 			// Don't send information about this peer to itself.
 			if i != j {
-				m = message.AddHost(string(s.Peers[j].Hostname),
-					s.Peers[j].Port)
+				m = message.AddReplica(s.Peers[j])
 				m.Send(buf)
 			}
 		}
 	}
 }
 
-// AddTasks sorts incoming tasks into the proper channels.
-func (s *State) AddTasks(m message.Message) {
-	for _, t := range m.Tasks {
+// AddCommands sorts incoming tasks into the proper channels.
+func (s *State) AddCommands(m message.Message) {
+	for _, t := range m.Commands {
 		switch m.T {
 		case message.REQUEST:
-			s.clientTasksIn <- t
+			s.clientCommandsIn <- t
 		case message.CONNECT:
-			s.adminTasksIn <- t
+			s.adminCommandsIn <- t
 		case message.HOSTLIST:
-			s.adminTasksIn <- t
+			s.adminCommandsIn <- t
 		case message.ADDHOST:
-			s.adminTasksIn <- t
+			s.adminCommandsIn <- t
 		case message.PREACCEPT:
-			t.HostId = s.PeerMap[getkey(m.Rep)]
-			s.preacceptTasksIn <- t
+			s.preacceptCommandsIn <- t
 		case message.PREACCEPTOK:
-			s.okTasksIn <- t
+			s.okCommandsIn <- t
 		case message.ACCEPT:
-			t.HostId = s.PeerMap[getkey(m.Rep)]
-			s.acceptTasksIn <- t
+			s.acceptCommandsIn <- t
 		case message.ACCEPTOK:
-			s.okTasksIn <- t
+			s.okCommandsIn <- t
 		case message.COMMIT:
-			s.commitTasksIn <- t
+			s.commitCommandsIn <- t
 		}
 	}
 }
@@ -231,26 +230,30 @@ func (s *State) AddTasks(m message.Message) {
 func (s *State) ProcessIncoming() {
 	for {
 		select {
-		//case t := <-s.adminTasksIn:
-		case t := <-s.okTasksIn:
+		//case t := <-s.adminCommandsIn:
+		case t := <-s.okCommandsIn:
 			fmt.Println("GOT PREACCEPT OK: ", t)
-			//case t := <-s.commitTasksIn:
-			//case t := <-s.acceptTasksIn:
-		case t := <-s.preacceptTasksIn:
+			//case t := <-s.commitCommandsIn:
+			//case t := <-s.acceptCommandsIn:
+		case t := <-s.preacceptCommandsIn:
 			fmt.Println("GOT PREACCEPT: ", t)
-			s.okTasksOut <- t
-		case t := <-s.clientTasksIn:
+			s.okCommandsOut <- t
+		case t := <-s.clientCommandsIn:
 			fmt.Println("GOT CLIENT REQ: ", t)
-			s.preacceptTasksOut <- t
+			t.S.ReplicaId = s.Self.Id
+			t.S.Inst = s.instance
+			s.instance++
+			s.data.AddDepsAndSeq(&t)
+			s.preacceptCommandsOut <- t
 		}
 	}
 }
 
 // batch reads from the given channel either until BATCHSIZE reads or no
 // tasks remain. The first task is already provided.
-func batch(ch chan message.Task, t1 message.Task) []message.Task {
+func batch(ch chan commands.Command, t1 commands.Command) []commands.Command {
 	end := false
-	tasks := make([]message.Task, BATCHSIZE)
+	tasks := make([]commands.Command, BATCHSIZE)
 	tasks[0] = t1
 	i := 1
 	for ; i < BATCHSIZE && !end; i++ {
@@ -264,47 +267,47 @@ func batch(ch chan message.Task, t1 message.Task) []message.Task {
 	return tasks[:i-1]
 }
 
-// sendReply sends a Message with a single Task to the replica indicated by
+// sendReply sends a Message with a single Command to the replica indicated by
 // t.HostId.
-func (s *State) sendReply(t message.Task) {
-	writer := s.Writers[t.HostId]
+func (s *State) sendReply(t commands.Command) {
+	writer := s.Writers[s.PeerMap[t.S.ReplicaId]]
 	m := &message.Message{
 		T:     message.PREACCEPTOK,
 		Rep:   s.Self,
-		Tasks: make([]message.Task, 1),
+		Commands: make([]commands.Command, 1),
 	}
-	m.Tasks[0] = t
+	m.Commands[0] = t
 	m.Send(writer)
 }
 
-// sendToAll sends a Message with a group of Tasks to all peers.
-func (s *State) sendToAll(tsk []message.Task) {
+// sendToAll sends a Message with a group of Commands to all peers.
+func (s *State) sendToAll(tsk []commands.Command) {
 	m := &message.Message{
 		T:     message.PREACCEPT,
 		Rep:   s.Self,
-		Tasks: tsk,
+		Commands: tsk,
 	}
 	for _, w := range s.Writers {
 		m.Send(w)
 	}
 }
 
-// ProcessOutgoing sends Messages for completed Tasks.
+// ProcessOutgoing sends Messages for completed Commands.
 func (s *State) ProcessOutgoing() {
 	for {
-		var tsk []message.Task
+		var tsk []commands.Command
 		select {
-		//case t := <-s.adminTasksOut:
-		case t := <-s.okTasksOut:
+		//case t := <-s.adminCommandsOut:
+		case t := <-s.okCommandsOut:
 			fmt.Println("SEND PREACCEPT OK: ", t)
 			s.sendReply(t)
-			//case t := <-s.commitTasksOut:
-			//case t := <-s.acceptTasksOut:
-		case t := <-s.preacceptTasksOut:
-			tsk = batch(s.preacceptTasksOut, t)
+			//case t := <-s.commitCommandsOut:
+			//case t := <-s.acceptCommandsOut:
+		case t := <-s.preacceptCommandsOut:
+			tsk = batch(s.preacceptCommandsOut, t)
 			fmt.Println("SEND PREACCEPT", tsk)
 			s.sendToAll(tsk)
-			//case t:= <-s.clientTasksOut:
+			//case t:= <-s.clientCommandsOut:
 		}
 	}
 }

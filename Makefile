@@ -8,7 +8,7 @@ MARSHAL := message replicainfo
 
 all: replica client
 
-replica:
+replica: src/mapset/set.go
 	${GO} install replica
 
 client:
@@ -16,6 +16,9 @@ client:
 
 gobin-codegen/src/bi/bi.go:
 	hg clone https://code.google.com/p/gobin-codegen/
+
+src/mapset/set.go:
+	git clone https://github.com/deckarep/golang-set src/mapset
 
 bin/bi: gobin-codegen/src/bi/bi.go
 	cd gobin-codegen; ${MAKE}

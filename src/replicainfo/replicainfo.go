@@ -6,6 +6,7 @@ type ReplicaInfo struct {
 	// Can't marshal strings.
 	Hostname []byte
 	Port     int
+	Id       int
 }
 
 // HostnameToString converts the hostname from a byte array to a string.

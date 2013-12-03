@@ -7,8 +7,8 @@ A senior thesis research project by Alex Cappiello.
 Current State
 -------------
 
-The current goal is to simulate the fast path commit. So, for now, nothing will
-ever generate a dependency.
+Dependencies are added upon receiving a new request, but they are not
+subsequently handled yet.
 
 Not Yet Implemented
 -------------------
@@ -20,7 +20,8 @@ Compilation
 
 Instead of committing the generated marshal/unmarahal code, it is generated,
 cloning gobin-codegen if not present. These must be explicitly regenerated if
-the underlying code is changed.
+the underlying code is changed. There is currently a bug such that "commands"
+needs to be added to the imports of message_marshal.go
 ```
 make marshal
 ```
@@ -44,3 +45,9 @@ cd bin
 ./replcia -p 5002 -h localhost -np 5000
 ./client -p 5000
 ```
+
+External Libraries
+------------------
+
+* Stub Generator: https://code.google.com/p/gobin-codegen/
+* Set Type: https://github.com/deckarep/golang-set
