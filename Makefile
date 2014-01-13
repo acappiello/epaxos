@@ -35,5 +35,6 @@ fmt:
 
 clean:
 	rm -rf bin/*
-	rm `find . -iname "*_marshal.go"`
 	rm `find -regex ".+~\|.+/#.+#"`
+	$(foreach marshal, ${MARSHAL}, \
+		rm src/${marshal}/${marshal}_marshal.go; )
