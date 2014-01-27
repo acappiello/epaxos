@@ -32,4 +32,13 @@ type Command struct {
 	Seq   uint32
 	Deps  mapset.Set
 	stat  Status
+	nOks  int
+	Slow  bool
+	Accepted bool
+	Committed bool
+	ClientId int64
+}
+
+func (c *Command) ResetNOks() {
+	c.nOks = 0
 }

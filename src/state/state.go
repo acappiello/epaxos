@@ -39,6 +39,7 @@ type State struct {
 
 	// nPeers is the number of other replicas.
 	nPeers int
+	quorum int
 	// instance is the current instance for this replica.
 	instance uint32
 
@@ -77,10 +78,11 @@ func Initialize(port int, nreplica int) (s *State, err error) {
 	s.Readers = make([]*bufio.Reader, nreplica-1)
 	s.Writers = make([]*bufio.Writer, nreplica-1)
 
-	s.data = commands.InitData()
-
 	s.nPeers = nreplica - 1
+	s.quorum = s.nPeers
 	s.instance = 0
+
+	s.data = commands.InitData(s.nPeers, s.Self.Id)
 
 	s.serverSocket, err = net.Listen("tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
@@ -213,12 +215,10 @@ func (s *State) AddCommands(m message.Message) {
 			s.adminCommandsIn <- t
 		case message.PREACCEPT:
 			s.preacceptCommandsIn <- t
-		case message.PREACCEPTOK:
+		case message.OK:
 			s.okCommandsIn <- t
 		case message.ACCEPT:
 			s.acceptCommandsIn <- t
-		case message.ACCEPTOK:
-			s.okCommandsIn <- t
 		case message.COMMIT:
 			s.commitCommandsIn <- t
 		}
@@ -232,11 +232,40 @@ func (s *State) ProcessIncoming() {
 		select {
 		//case t := <-s.adminCommandsIn:
 		case t := <-s.okCommandsIn:
-			fmt.Println("GOT PREACCEPT OK: ", t)
-			//case t := <-s.commitCommandsIn:
-			//case t := <-s.acceptCommandsIn:
+			if t.Accepted {
+				fmt.Println("GOT ACCEPT OK: ", t)
+				noks := s.data.HandleAcceptOk(&t)
+				if noks >= s.quorum {
+					t.Committed = true
+					s.commitCommandsOut <- t
+				}
+			} else {
+				fmt.Println("GOT PREACCEPT OK: ", t)
+				noks := s.data.HandlePreacceptOk(&t)
+				fmt.Println(noks, s.quorum)
+				if noks >= s.quorum {
+					if t.Slow {
+						t.Accepted = true
+						t.ResetNOks()
+						s.acceptCommandsOut <- t
+					} else {
+						t.Accepted = true
+						t.Committed = true
+						s.sendToClient(t)
+						s.commitCommandsOut <- t
+					}
+				}
+			}
+		case t := <-s.commitCommandsIn:
+			fmt.Println("GOT COMMIT: ", t)
+			s.data.HandleCommit(&t)
+		case t := <-s.acceptCommandsIn:
+			fmt.Println("GOT ACCEPT: ", t)
+			s.data.HandleAccept(&t)
+			s.okCommandsOut <- t
 		case t := <-s.preacceptCommandsIn:
 			fmt.Println("GOT PREACCEPT: ", t)
+			s.data.HandlePreaccept(&t)
 			s.okCommandsOut <- t
 		case t := <-s.clientCommandsIn:
 			fmt.Println("GOT CLIENT REQ: ", t)
@@ -244,9 +273,24 @@ func (s *State) ProcessIncoming() {
 			t.S.Inst = s.instance
 			s.instance++
 			s.data.AddDepsAndSeq(&t)
+			s.data.AddCmd(&t)
 			s.preacceptCommandsOut <- t
 		}
 	}
+}
+
+func (s *State) sendToClient(c commands.Command) {
+	w, exists := s.listener.ClientMap[c.ClientId]
+	if !exists {
+		return
+	}
+	m := &message.Message{
+		T:    message.COMMIT,
+		Rep:  s.Self,
+		Commands: make([]commands.Command, 1),
+	}
+	m.Commands[0] = c
+	m.Send(w)
 }
 
 // batch reads from the given channel either until BATCHSIZE reads or no
@@ -272,7 +316,7 @@ func batch(ch chan commands.Command, t1 commands.Command) []commands.Command {
 func (s *State) sendReply(t commands.Command) {
 	writer := s.Writers[s.PeerMap[t.S.ReplicaId]]
 	m := &message.Message{
-		T:     message.PREACCEPTOK,
+		T:     message.OK,
 		Rep:   s.Self,
 		Commands: make([]commands.Command, 1),
 	}
@@ -281,9 +325,9 @@ func (s *State) sendReply(t commands.Command) {
 }
 
 // sendToAll sends a Message with a group of Commands to all peers.
-func (s *State) sendToAll(tsk []commands.Command) {
+func (s *State) sendToAll(tsk []commands.Command, t message.MsgType) {
 	m := &message.Message{
-		T:     message.PREACCEPT,
+		T:     t,
 		Rep:   s.Self,
 		Commands: tsk,
 	}
@@ -299,14 +343,20 @@ func (s *State) ProcessOutgoing() {
 		select {
 		//case t := <-s.adminCommandsOut:
 		case t := <-s.okCommandsOut:
-			fmt.Println("SEND PREACCEPT OK: ", t)
+			fmt.Println("SEND OK: ", t)
 			s.sendReply(t)
-			//case t := <-s.commitCommandsOut:
-			//case t := <-s.acceptCommandsOut:
+		case t := <-s.commitCommandsOut:
+			tsk = batch(s.commitCommandsOut, t)
+			fmt.Println("SEND COMMIT", tsk)
+			s.sendToAll(tsk, message.COMMIT)
+		case t := <-s.acceptCommandsOut:
+			tsk = batch(s.acceptCommandsOut, t)
+			fmt.Println("SEND ACCEPT", tsk)
+			s.sendToAll(tsk, message.ACCEPT)
 		case t := <-s.preacceptCommandsOut:
 			tsk = batch(s.preacceptCommandsOut, t)
 			fmt.Println("SEND PREACCEPT", tsk)
-			s.sendToAll(tsk)
+			s.sendToAll(tsk, message.PREACCEPT)
 			//case t:= <-s.clientCommandsOut:
 		}
 	}

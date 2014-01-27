@@ -22,12 +22,18 @@ func main() {
 	fmt.Println("Hello, client.")
 	fmt.Println("Port is: " + strconv.Itoa(*port))
 
-	nreq := 10
+	nreq := 100
 	conn, _ := net.Dial("tcp", fmt.Sprintf("%s:%d", *host, *port))
 	buf := bufio.NewWriter(conn)
 	for i := 0; i < nreq; i++ {
-		m := message.ReadRequest(i)
+		m := message.ReadRequest(i % 10)
 		m.Send(buf)
+	}
+	rep := &message.Message{}
+	reader := bufio.NewReader(conn)
+	for i := 0; i < nreq; i++ {
+		rep.Unmarshal(reader)
+		fmt.Println("DONE: ", i, rep)
 	}
 	conn.Close()
 }

@@ -29,12 +29,13 @@ marshal: bin/bi
 	$(foreach marshal, ${MARSHAL}, \
 		bin/bi src/${marshal}/${marshal}.go > \
 			src/${marshal}/${marshal}_marshal.go; )
+	patch src/message/message_marshal.go src/message/marshal.patch
 
 fmt:
 	cd src; ${GO} fmt *
 
 clean:
-	rm -rf bin/*
-	rm `find -regex ".+~\|.+/#.+#"`
+	rm -rf bin/* pkg/*
 	$(foreach marshal, ${MARSHAL}, \
-		rm src/${marshal}/${marshal}_marshal.go; )
+		rm -f src/${marshal}/${marshal}_marshal.go; )
+	rm `find -regex ".+~\|.+/#.+#"`
