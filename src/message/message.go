@@ -4,7 +4,6 @@ package message
 
 import (
 	"bufio"
-	"fmt"
 
 	"commands"
 	"replicainfo"
@@ -54,7 +53,6 @@ func ReadRequest(key int) *Message {
 	m.Commands = make([]commands.Command, 1)
 	m.Commands[0].Key = key
 	m.Commands[0].R = commands.READ
-	fmt.Println(m)
 	return m
 }
 
