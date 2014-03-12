@@ -1,9 +1,5 @@
 package commands
 
-import (
-	"mapset"
-)
-
 type Status uint8
 type ReqType uint8
 
@@ -25,18 +21,18 @@ type Slot struct {
 }
 
 type Command struct {
-	S     Slot
-	R     ReqType
-	Key   int
-	Value int
-	Seq   uint32
-	Deps  mapset.Set
-	stat  Status
-	nOks  int
-	Slow  bool
-	Accepted bool
+	S         Slot
+	R         ReqType
+	Key       int
+	Value     int
+	Seq       uint32
+	Deps      []uint32
+	stat      Status
+	nOks      int
+	Slow      bool
+	Accepted  bool
 	Committed bool
-	ClientId int64
+	ClientId  int64
 }
 
 func (c *Command) ResetNOks() {

@@ -37,7 +37,7 @@ type State struct {
 	// Writers is a cache of buffered writers to other replicas.
 	Writers []*bufio.Writer
 
-	data *commands.Data
+	Data *commands.Data
 
 	// nPeers is the number of other replicas.
 	nPeers int
@@ -73,7 +73,7 @@ func Initialize(port int, nreplica int) (s *State, err error) {
 	host, _ := os.Hostname()
 	s.Self.Hostname = []byte(host)
 	s.Self.Port = port
-	s.Self.Id = -2
+	s.Self.Id = nreplica - 1
 	s.Peers = make([]replicainfo.ReplicaInfo, nreplica-1)
 	s.PeerMap = make(map[int]int)
 	s.Connections = make([]net.Conn, nreplica-1)
@@ -83,8 +83,6 @@ func Initialize(port int, nreplica int) (s *State, err error) {
 	s.nPeers = nreplica - 1
 	s.quorum = s.nPeers
 	s.instance = 0
-
-	s.data = commands.InitData(s.nPeers, s.Self.Id)
 
 	s.serverSocket, err = net.Listen("tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
@@ -255,11 +253,11 @@ func (s *State) ProcessIncoming() {
 		//case t := <-s.adminCommandsIn:
 		case t := <-s.commitCommandsIn:
 			//fmt.Println("GOT COMMIT: ", t)
-			s.data.HandleCommit(&t)
+			s.Data.HandleCommit(&t)
 		case t := <-s.okCommandsIn:
 			if t.Accepted {
 				//fmt.Println("GOT ACCEPT OK: ", t)
-				noks := s.data.HandleAcceptOk(&t)
+				noks := s.Data.HandleAcceptOk(&t)
 				if noks >= s.quorum {
 					t.Committed = true
 					s.sendToClient(t)
@@ -267,7 +265,7 @@ func (s *State) ProcessIncoming() {
 				}
 			} else {
 				//fmt.Println("GOT PREACCEPT OK: ", t)
-				noks := s.data.HandlePreacceptOk(&t)
+				noks := s.Data.HandlePreacceptOk(&t)
 				//fmt.Println(noks, s.quorum)
 				if noks >= s.quorum {
 					if t.Slow {
@@ -284,19 +282,19 @@ func (s *State) ProcessIncoming() {
 			}
 		case t := <-s.acceptCommandsIn:
 			//fmt.Println("GOT ACCEPT: ", t)
-			s.data.HandleAccept(&t)
+			s.Data.HandleAccept(&t)
 			s.okCommandsOut <- t
 		case t := <-s.preacceptCommandsIn:
 			//fmt.Println("GOT PREACCEPT: ", t)
-			s.data.HandlePreaccept(&t)
+			s.Data.HandlePreaccept(&t)
 			s.okCommandsOut <- t
 		case t := <-s.clientCommandsIn:
 			//fmt.Println("GOT CLIENT REQ: ", t)
 			t.S.ReplicaId = s.Self.Id
 			t.S.Inst = s.instance
 			s.instance++
-			s.data.AddDepsAndSeq(&t)
-			s.data.AddCmd(&t)
+			s.Data.AddDepsAndSeq(&t)
+			s.Data.AddCmd(&t)
 			s.preacceptCommandsOut <- t
 		}
 	}
@@ -308,8 +306,8 @@ func (s *State) sendToClient(c commands.Command) {
 		return
 	}
 	m := &message.Message{
-		T:    message.COMMIT,
-		Rep:  s.Self,
+		T:        message.COMMIT,
+		Rep:      s.Self,
 		Commands: make([]commands.Command, 1),
 	}
 	m.Commands[0] = c
@@ -337,8 +335,8 @@ func batch(ch chan commands.Command, t1 commands.Command) []commands.Command {
 func (s *State) sendReply(t commands.Command) {
 	writer := s.Writers[s.PeerMap[t.S.ReplicaId]]
 	m := &message.Message{
-		T:     message.OK,
-		Rep:   s.Self,
+		T:        message.OK,
+		Rep:      s.Self,
 		Commands: make([]commands.Command, 1),
 	}
 	m.Commands[0] = t
@@ -348,8 +346,8 @@ func (s *State) sendReply(t commands.Command) {
 // sendToAll sends a Message with a group of Commands to all peers.
 func (s *State) sendToAll(tsk []commands.Command, t message.MsgType) {
 	m := &message.Message{
-		T:     t,
-		Rep:   s.Self,
+		T:        t,
+		Rep:      s.Self,
 		Commands: tsk,
 	}
 	for _, w := range s.Writers {

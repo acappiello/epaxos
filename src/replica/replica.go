@@ -9,6 +9,7 @@ import (
 	"os"
 	"strconv"
 
+	"commands"
 	"message"
 	"state"
 )
@@ -49,6 +50,7 @@ func main() {
 		fmt.Println("Getting Peers.")
 		state.GetPeers(conn)
 	}
+	state.Data = commands.InitData(*nReplica, state.Self.Id)
 	fmt.Println("Done.")
 
 	state.Run()

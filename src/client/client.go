@@ -19,7 +19,7 @@ var port *int = flag.Int("p", 5000, "Port. Default: 5000")
 func send(nreq int, w *bufio.Writer) {
 	for i := 0; i < nreq; i++ {
 		m := message.ReadRequest(i % 100)
-		fmt.Println("SEND: ", i, m)
+		//fmt.Println("SEND: ", i, m)
 		m.Send(w)
 	}
 }
@@ -40,7 +40,7 @@ func main() {
 	rep := &message.Message{}
 	for i := 0; i < nreq; i++ {
 		rep.Unmarshal(reader)
-		fmt.Println("DONE: ", i, rep)
+		//fmt.Println("DONE: ", i, rep)
 	}
 
 	conn.Close()

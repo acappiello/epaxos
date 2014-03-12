@@ -13,7 +13,7 @@ import (
 type Listener struct {
 	messages  chan message.Message
 	ln        net.Listener
-	ClientMap map[int64] *bufio.Writer
+	ClientMap map[int64]*bufio.Writer
 }
 
 // NewListener sets the initial state of to receive input.
@@ -21,7 +21,7 @@ func NewListener(ln net.Listener) *Listener {
 	l := new(Listener)
 	l.messages = make(chan message.Message)
 	l.ln = ln
-	l.ClientMap = make(map[int64] *bufio.Writer)
+	l.ClientMap = make(map[int64]*bufio.Writer)
 	return l
 }
 
@@ -45,7 +45,7 @@ func (l *Listener) HandleConnection(conn net.Conn) {
 			return
 		}
 		if m.T == message.REQUEST {
-			for i := range(m.Commands) {
+			for i := range m.Commands {
 				m.Commands[i].ClientId = id
 			}
 		}

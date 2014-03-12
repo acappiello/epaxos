@@ -1,9 +1,9 @@
 package commands
 
 import (
-	"io"
 	"encoding/gob"
 	"fmt"
+	"io"
 	"os"
 )
 
