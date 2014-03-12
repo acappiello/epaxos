@@ -1,4 +1,4 @@
-GOPATH=/usr/local/lib/go:${PWD}
+GOPATH=${PWD}
 export GOPATH
 GO=go
 

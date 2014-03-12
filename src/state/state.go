@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"time"
 
 	"commands"
 	"listener"
@@ -18,7 +19,8 @@ import (
 const BATCHSIZE int = 100
 
 // CHANSIZE is the size that channels are created with.
-const CHANSIZE int = 100
+// Currently, will deadlock if this is too small.
+const CHANSIZE int = 100000
 
 // State holds all vital information about the replica.
 type State struct {
@@ -109,11 +111,31 @@ func Initialize(port int, nreplica int) (s *State, err error) {
 	return
 }
 
+func (s *State) Status() {
+	for {
+		fmt.Println("-------------------------------")
+		fmt.Println("clientCommandsIn: ", len(s.clientCommandsIn))
+		fmt.Println("preacceptCommandsIn: ", len(s.preacceptCommandsIn))
+		fmt.Println("acceptCommandsIn: ", len(s.acceptCommandsIn))
+		fmt.Println("commitCommandsIn: ", len(s.commitCommandsIn))
+		fmt.Println("okCommandsIn: ", len(s.okCommandsIn))
+		fmt.Println("adminCommandsIn: ", len(s.adminCommandsIn))
+		fmt.Println("clientCommandsOut: ", len(s.clientCommandsOut))
+		fmt.Println("preacceptCommandsOut: ", len(s.preacceptCommandsOut))
+		fmt.Println("acceptCommandsOut: ", len(s.acceptCommandsOut))
+		fmt.Println("commitCommandsOut: ", len(s.commitCommandsOut))
+		fmt.Println("okCommandsOut: ", len(s.okCommandsOut))
+		fmt.Println("adminCommandsOut: ", len(s.adminCommandsOut))
+		time.Sleep(time.Second)
+	}
+}
+
 // Run is called once the replica is ready to receive input.
 func (s *State) Run() {
 	go s.ProcessIncoming()
 	go s.ProcessOutgoing()
 	go s.listener.Listen()
+	//go s.Status()
 	for {
 		m := s.listener.Get()
 		//fmt.Println(m)
@@ -231,18 +253,22 @@ func (s *State) ProcessIncoming() {
 	for {
 		select {
 		//case t := <-s.adminCommandsIn:
+		case t := <-s.commitCommandsIn:
+			//fmt.Println("GOT COMMIT: ", t)
+			s.data.HandleCommit(&t)
 		case t := <-s.okCommandsIn:
 			if t.Accepted {
-				fmt.Println("GOT ACCEPT OK: ", t)
+				//fmt.Println("GOT ACCEPT OK: ", t)
 				noks := s.data.HandleAcceptOk(&t)
 				if noks >= s.quorum {
 					t.Committed = true
+					s.sendToClient(t)
 					s.commitCommandsOut <- t
 				}
 			} else {
-				fmt.Println("GOT PREACCEPT OK: ", t)
+				//fmt.Println("GOT PREACCEPT OK: ", t)
 				noks := s.data.HandlePreacceptOk(&t)
-				fmt.Println(noks, s.quorum)
+				//fmt.Println(noks, s.quorum)
 				if noks >= s.quorum {
 					if t.Slow {
 						t.Accepted = true
@@ -256,19 +282,16 @@ func (s *State) ProcessIncoming() {
 					}
 				}
 			}
-		case t := <-s.commitCommandsIn:
-			fmt.Println("GOT COMMIT: ", t)
-			s.data.HandleCommit(&t)
 		case t := <-s.acceptCommandsIn:
-			fmt.Println("GOT ACCEPT: ", t)
+			//fmt.Println("GOT ACCEPT: ", t)
 			s.data.HandleAccept(&t)
 			s.okCommandsOut <- t
 		case t := <-s.preacceptCommandsIn:
-			fmt.Println("GOT PREACCEPT: ", t)
+			//fmt.Println("GOT PREACCEPT: ", t)
 			s.data.HandlePreaccept(&t)
 			s.okCommandsOut <- t
 		case t := <-s.clientCommandsIn:
-			fmt.Println("GOT CLIENT REQ: ", t)
+			//fmt.Println("GOT CLIENT REQ: ", t)
 			t.S.ReplicaId = s.Self.Id
 			t.S.Inst = s.instance
 			s.instance++
@@ -296,19 +319,17 @@ func (s *State) sendToClient(c commands.Command) {
 // batch reads from the given channel either until BATCHSIZE reads or no
 // tasks remain. The first task is already provided.
 func batch(ch chan commands.Command, t1 commands.Command) []commands.Command {
-	end := false
 	tasks := make([]commands.Command, BATCHSIZE)
 	tasks[0] = t1
-	i := 1
-	for ; i < BATCHSIZE && !end; i++ {
+	for i := 1; i < BATCHSIZE; i++ {
 		select {
 		case t := <-ch:
 			tasks[i] = t
 		default:
-			end = true
+			return tasks[:i]
 		}
 	}
-	return tasks[:i-1]
+	return tasks
 }
 
 // sendReply sends a Message with a single Command to the replica indicated by
@@ -343,19 +364,19 @@ func (s *State) ProcessOutgoing() {
 		select {
 		//case t := <-s.adminCommandsOut:
 		case t := <-s.okCommandsOut:
-			fmt.Println("SEND OK: ", t)
+			//fmt.Println("SEND OK: ", t)
 			s.sendReply(t)
 		case t := <-s.commitCommandsOut:
 			tsk = batch(s.commitCommandsOut, t)
-			fmt.Println("SEND COMMIT", tsk)
+			//fmt.Println("SEND COMMIT", tsk)
 			s.sendToAll(tsk, message.COMMIT)
 		case t := <-s.acceptCommandsOut:
 			tsk = batch(s.acceptCommandsOut, t)
-			fmt.Println("SEND ACCEPT", tsk)
+			//fmt.Println("SEND ACCEPT", tsk)
 			s.sendToAll(tsk, message.ACCEPT)
 		case t := <-s.preacceptCommandsOut:
 			tsk = batch(s.preacceptCommandsOut, t)
-			fmt.Println("SEND PREACCEPT", tsk)
+			//fmt.Println("SEND PREACCEPT", tsk)
 			s.sendToAll(tsk, message.PREACCEPT)
 			//case t:= <-s.clientCommandsOut:
 		}
