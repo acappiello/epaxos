@@ -35,4 +35,4 @@ clean:
 	rm -rf bin/* pkg/*
 	$(foreach marshal, ${MARSHAL}, \
 		rm -f src/${marshal}/${marshal}_marshal.go; )
-	rm `find -regex ".+~\|.+/#.+#"`
+	rm -f `find -regex ".+~\|.+/#.+#"`

@@ -9,6 +9,7 @@ import (
 	"net"
 	"strconv"
 
+	"commands"
 	"message"
 )
 
@@ -18,7 +19,7 @@ var port *int = flag.Int("p", 5000, "Port. Default: 5000")
 
 func send(nreq int, w *bufio.Writer) {
 	for i := 0; i < nreq; i++ {
-		m := message.ReadRequest(i % 100)
+		m := message.ReadRequest(commands.KeyType(i % 100))
 		//fmt.Println("SEND: ", i, m)
 		m.Send(w)
 	}

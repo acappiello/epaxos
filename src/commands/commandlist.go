@@ -1,7 +1,7 @@
 package commands
 
 type CommandList map[Slot]*Command
-type Deps map[int][]uint32
+type Deps map[KeyType][]uint32
 
 type Data struct {
 	cmds     CommandList
@@ -26,14 +26,18 @@ func max(x, y uint32) uint32 {
 	return y
 }
 
-func maxArr(A []uint32) uint32 {
-	var x uint32 = 0
-	for _, v := range A {
-		if v > x {
-			x = v
+func (d *Data) maxSeq(A []uint32) uint32 {
+	var max uint32 = 0
+	for i, v := range(A) {
+		if v > 0 {
+			S := Slot{i, v}
+			seq := d.cmds[S].Seq
+			if seq > max {
+				max = seq
+			}
 		}
 	}
-	return x
+	return max
 }
 
 func (d *Data) AddDepsAndSeq(cmd *Command) {
@@ -43,13 +47,10 @@ func (d *Data) AddDepsAndSeq(cmd *Command) {
 		d.deps[cmd.Key] = deps
 	}
 
-	thisSeq := maxArr(deps) + 1
-	deps[d.id] = thisSeq
+	cmd.Seq = d.maxSeq(deps) + 1
 	cmd.Deps = make([]uint32, d.nreplica)
 	copy(cmd.Deps, deps)
-}
-
-func (d *Data) AddCmd(cmd *Command) {
+	deps[d.id] = cmd.S.Inst
 	d.cmds[cmd.S] = cmd
 }
 
@@ -84,22 +85,25 @@ func (d *Data) HandlePreaccept(cmd *Command) {
 		deps = make([]uint32, d.nreplica)
 		d.deps[cmd.Key] = deps
 	}
-	seq := maxArr(deps)
+	seq := d.maxSeq(deps) + 1
 	seq = max(seq, cmd.Seq)
 	cmd.Seq = seq
-	deps[cmd.S.ReplicaId] = seq
 	updateDepsBi(deps, cmd.Deps)
 	d.cmds[cmd.S] = cmd
 }
 
-func (d *Data) HandlePreacceptOk(cmd *Command) int {
+func (d *Data) HandlePreacceptOk(cmd *Command) *Command {
 	thisCmd := d.cmds[cmd.S]
-	if updateDepsBi(thisCmd.Deps, cmd.Deps) > 0 {
+	if updateDeps(thisCmd.Deps, cmd.Deps) > 0 {
 		thisCmd.Slow = true
 	}
-	updateDeps(d.deps[cmd.Key], cmd.Deps)
-	thisCmd.nOks = thisCmd.nOks + 1
-	return thisCmd.nOks
+	if thisCmd.Seq < cmd.Seq {
+		thisCmd.Seq = cmd.Seq
+		thisCmd.Slow = true
+	}
+	updateDeps(d.deps[cmd.Key], thisCmd.Deps)
+	thisCmd.NOks = thisCmd.NOks + 1
+	return thisCmd
 }
 
 func (d *Data) HandleAccept(cmd *Command) {
@@ -109,8 +113,8 @@ func (d *Data) HandleAccept(cmd *Command) {
 
 func (d *Data) HandleAcceptOk(cmd *Command) int {
 	thisCmd := d.cmds[cmd.S]
-	thisCmd.nOks = thisCmd.nOks + 1
-	return thisCmd.nOks
+	thisCmd.NOks = thisCmd.NOks + 1
+	return thisCmd.NOks
 }
 
 func (d *Data) HandleCommit(cmd *Command) {

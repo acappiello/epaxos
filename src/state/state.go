@@ -49,20 +49,23 @@ type State struct {
 	listener     *listener.Listener
 
 	// Channels for unprocessed tasks.
-	clientCommandsIn    chan commands.Command
-	preacceptCommandsIn chan commands.Command
-	acceptCommandsIn    chan commands.Command
-	commitCommandsIn    chan commands.Command
-	okCommandsIn        chan commands.Command
-	adminCommandsIn     chan commands.Command
+	clientCommandsIn    chan *commands.Command
+	preacceptCommandsIn chan *commands.Command
+	acceptCommandsIn    chan *commands.Command
+	commitCommandsIn    chan *commands.Command
+	okCommandsIn        chan *commands.Command
+	adminCommandsIn     chan *commands.Command
 
 	// Channels for tasks that have not yet been sent.
-	clientCommandsOut    chan commands.Command
-	preacceptCommandsOut chan commands.Command
-	acceptCommandsOut    chan commands.Command
-	commitCommandsOut    chan commands.Command
-	okCommandsOut        chan commands.Command
-	adminCommandsOut     chan commands.Command
+	clientCommandsOut    chan *commands.Command
+	preacceptCommandsOut chan *commands.Command
+	acceptCommandsOut    chan *commands.Command
+	commitCommandsOut    chan *commands.Command
+	okCommandsOut        chan *commands.Command
+	adminCommandsOut     chan *commands.Command
+
+	executeCommands         chan *commands.Command
+	priorityExecuteCommands chan *commands.Command
 }
 
 // Initialize sets the startup state of the repica.
@@ -82,7 +85,7 @@ func Initialize(port int, nreplica int) (s *State, err error) {
 
 	s.nPeers = nreplica - 1
 	s.quorum = s.nPeers
-	s.instance = 0
+	s.instance = 1
 
 	s.serverSocket, err = net.Listen("tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
@@ -90,19 +93,22 @@ func Initialize(port int, nreplica int) (s *State, err error) {
 	}
 	s.listener = listener.NewListener(s.serverSocket)
 
-	s.clientCommandsIn = make(chan commands.Command, CHANSIZE)
-	s.preacceptCommandsIn = make(chan commands.Command, CHANSIZE)
-	s.acceptCommandsIn = make(chan commands.Command, CHANSIZE)
-	s.commitCommandsIn = make(chan commands.Command, CHANSIZE)
-	s.okCommandsIn = make(chan commands.Command, CHANSIZE)
-	s.adminCommandsIn = make(chan commands.Command, CHANSIZE)
+	s.clientCommandsIn = make(chan *commands.Command, CHANSIZE)
+	s.preacceptCommandsIn = make(chan *commands.Command, CHANSIZE)
+	s.acceptCommandsIn = make(chan *commands.Command, CHANSIZE)
+	s.commitCommandsIn = make(chan *commands.Command, CHANSIZE)
+	s.okCommandsIn = make(chan *commands.Command, CHANSIZE)
+	s.adminCommandsIn = make(chan *commands.Command, CHANSIZE)
 
-	s.clientCommandsOut = make(chan commands.Command, CHANSIZE)
-	s.preacceptCommandsOut = make(chan commands.Command, CHANSIZE)
-	s.acceptCommandsOut = make(chan commands.Command, CHANSIZE)
-	s.commitCommandsOut = make(chan commands.Command, CHANSIZE)
-	s.okCommandsOut = make(chan commands.Command, CHANSIZE)
-	s.adminCommandsOut = make(chan commands.Command, CHANSIZE)
+	s.clientCommandsOut = make(chan *commands.Command, CHANSIZE)
+	s.preacceptCommandsOut = make(chan *commands.Command, CHANSIZE)
+	s.acceptCommandsOut = make(chan *commands.Command, CHANSIZE)
+	s.commitCommandsOut = make(chan *commands.Command, CHANSIZE)
+	s.okCommandsOut = make(chan *commands.Command, CHANSIZE)
+	s.adminCommandsOut = make(chan *commands.Command, CHANSIZE)
+
+	s.executeCommands = make(chan *commands.Command, CHANSIZE)
+	s.priorityExecuteCommands = make(chan *commands.Command, CHANSIZE)
 
 	gob.Register(commands.Slot{})
 
@@ -132,6 +138,7 @@ func (s *State) Status() {
 func (s *State) Run() {
 	go s.ProcessIncoming()
 	go s.ProcessOutgoing()
+	go s.ProcessExecute()
 	go s.listener.Listen()
 	//go s.Status()
 	for {
@@ -224,25 +231,35 @@ func (s *State) SendHosts() {
 // AddCommands sorts incoming tasks into the proper channels.
 func (s *State) AddCommands(m message.Message) {
 	for _, t := range m.Commands {
+		// TODO: Shouldn't need to allocate new memory.
+		cmd := new(commands.Command)
+		*cmd = t
 		switch m.T {
 		case message.REQUEST:
-			s.clientCommandsIn <- t
+			s.clientCommandsIn <- cmd
 		case message.CONNECT:
-			s.adminCommandsIn <- t
+			s.adminCommandsIn <- cmd
 		case message.HOSTLIST:
-			s.adminCommandsIn <- t
+			s.adminCommandsIn <- cmd
 		case message.ADDHOST:
-			s.adminCommandsIn <- t
+			s.adminCommandsIn <- cmd
 		case message.PREACCEPT:
-			s.preacceptCommandsIn <- t
+			s.preacceptCommandsIn <- cmd
 		case message.OK:
-			s.okCommandsIn <- t
+			s.okCommandsIn <- cmd
 		case message.ACCEPT:
-			s.acceptCommandsIn <- t
+			s.acceptCommandsIn <- cmd
 		case message.COMMIT:
-			s.commitCommandsIn <- t
+			s.commitCommandsIn <- cmd
 		}
 	}
+}
+
+func (s *State) commit(t *commands.Command) {
+	// TODO: Case on read vs execute.
+	s.executeCommands <- t
+	s.commitCommandsOut <- t
+	s.sendToClient(t)
 }
 
 // ProcessIncoming takes an appropriate action for unhandled tasks.
@@ -253,54 +270,51 @@ func (s *State) ProcessIncoming() {
 		//case t := <-s.adminCommandsIn:
 		case t := <-s.commitCommandsIn:
 			//fmt.Println("GOT COMMIT: ", t)
-			s.Data.HandleCommit(&t)
+			s.Data.HandleCommit(t)
 		case t := <-s.okCommandsIn:
 			if t.Accepted {
 				//fmt.Println("GOT ACCEPT OK: ", t)
-				noks := s.Data.HandleAcceptOk(&t)
+				noks := s.Data.HandleAcceptOk(t)
 				if noks >= s.quorum {
 					t.Committed = true
-					s.sendToClient(t)
-					s.commitCommandsOut <- t
+					s.commit(t)
 				}
 			} else {
 				//fmt.Println("GOT PREACCEPT OK: ", t)
-				noks := s.Data.HandlePreacceptOk(&t)
+				cmd := s.Data.HandlePreacceptOk(t)
 				//fmt.Println(noks, s.quorum)
-				if noks >= s.quorum {
-					if t.Slow {
-						t.Accepted = true
-						t.ResetNOks()
-						s.acceptCommandsOut <- t
+				if cmd.NOks >= s.quorum {
+					if cmd.Slow {
+						cmd.Accepted = true
+						cmd.NOks = 0
+						s.acceptCommandsOut <- cmd
 					} else {
 						t.Accepted = true
 						t.Committed = true
-						s.sendToClient(t)
-						s.commitCommandsOut <- t
+						s.commit(cmd)
 					}
 				}
 			}
 		case t := <-s.acceptCommandsIn:
 			//fmt.Println("GOT ACCEPT: ", t)
-			s.Data.HandleAccept(&t)
+			s.Data.HandleAccept(t)
 			s.okCommandsOut <- t
 		case t := <-s.preacceptCommandsIn:
 			//fmt.Println("GOT PREACCEPT: ", t)
-			s.Data.HandlePreaccept(&t)
+			s.Data.HandlePreaccept(t)
 			s.okCommandsOut <- t
 		case t := <-s.clientCommandsIn:
 			//fmt.Println("GOT CLIENT REQ: ", t)
 			t.S.ReplicaId = s.Self.Id
 			t.S.Inst = s.instance
 			s.instance++
-			s.Data.AddDepsAndSeq(&t)
-			s.Data.AddCmd(&t)
+			s.Data.AddDepsAndSeq(t)
 			s.preacceptCommandsOut <- t
 		}
 	}
 }
 
-func (s *State) sendToClient(c commands.Command) {
+func (s *State) sendToClient(c *commands.Command) {
 	w, exists := s.listener.ClientMap[c.ClientId]
 	if !exists {
 		return
@@ -310,19 +324,19 @@ func (s *State) sendToClient(c commands.Command) {
 		Rep:      s.Self,
 		Commands: make([]commands.Command, 1),
 	}
-	m.Commands[0] = c
+	m.Commands[0] = *c
 	m.Send(w)
 }
 
 // batch reads from the given channel either until BATCHSIZE reads or no
 // tasks remain. The first task is already provided.
-func batch(ch chan commands.Command, t1 commands.Command) []commands.Command {
+func batch(ch chan *commands.Command, t1 *commands.Command) []commands.Command {
 	tasks := make([]commands.Command, BATCHSIZE)
-	tasks[0] = t1
+	tasks[0] = *t1
 	for i := 1; i < BATCHSIZE; i++ {
 		select {
 		case t := <-ch:
-			tasks[i] = t
+			tasks[i] = *t
 		default:
 			return tasks[:i]
 		}
@@ -332,14 +346,14 @@ func batch(ch chan commands.Command, t1 commands.Command) []commands.Command {
 
 // sendReply sends a Message with a single Command to the replica indicated by
 // t.HostId.
-func (s *State) sendReply(t commands.Command) {
+func (s *State) sendReply(t *commands.Command) {
 	writer := s.Writers[s.PeerMap[t.S.ReplicaId]]
 	m := &message.Message{
 		T:        message.OK,
 		Rep:      s.Self,
 		Commands: make([]commands.Command, 1),
 	}
-	m.Commands[0] = t
+	m.Commands[0] = *t
 	m.Send(writer)
 }
 
@@ -378,5 +392,20 @@ func (s *State) ProcessOutgoing() {
 			s.sendToAll(tsk, message.PREACCEPT)
 			//case t:= <-s.clientCommandsOut:
 		}
+	}
+}
+
+func (s *State) ProcessExecute() {
+	var cmd *commands.Command
+	for {
+		select {
+		case t := <-s.priorityExecuteCommands:
+			cmd = t
+		case t := <-s.executeCommands:
+			cmd = t
+		}
+		//fmt.Println(&cmd)
+		s.Data.BuildGraph(cmd)
+		//fmt.Println(g)
 	}
 }

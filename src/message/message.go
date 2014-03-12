@@ -47,7 +47,7 @@ func AddHost(host string, port int) *Message {
 }
 
 // ReadRequest creates a message for a READ request from a client.
-func ReadRequest(key int) *Message {
+func ReadRequest(key commands.KeyType) *Message {
 	m := new(Message)
 	m.T = REQUEST
 	m.Commands = make([]commands.Command, 1)

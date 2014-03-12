@@ -1,13 +1,9 @@
 package commands
 
-type Status uint8
-type ReqType uint8
+type KeyType int
+type ValueType int
 
-const (
-	PREACCEPTED Status = iota
-	ACCEPTED
-	COMMITTED
-)
+type ReqType uint8
 
 const (
 	READ ReqType = iota
@@ -23,18 +19,14 @@ type Slot struct {
 type Command struct {
 	S         Slot
 	R         ReqType
-	Key       int
-	Value     int
+	Key       KeyType
+	Value     ValueType
 	Seq       uint32
 	Deps      []uint32
-	stat      Status
-	nOks      int
+	NOks      int
 	Slow      bool
 	Accepted  bool
 	Committed bool
+	Executed  bool
 	ClientId  int64
-}
-
-func (c *Command) ResetNOks() {
-	c.nOks = 0
 }
