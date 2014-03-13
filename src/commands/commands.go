@@ -1,7 +1,11 @@
 package commands
 
-type KeyType int
-type ValueType int
+import (
+	"datatypes"
+)
+
+type KeyType datatypes.KeyType
+type ValueType datatypes.ValueType
 
 type ReqType uint8
 
@@ -11,13 +15,8 @@ const (
 	EXECUTEANDREAD
 )
 
-type Slot struct {
-	ReplicaId int
-	Inst      uint32
-}
-
 type Command struct {
-	S         Slot
+	S         datatypes.Slot
 	R         ReqType
 	Key       KeyType
 	Value     ValueType

@@ -1,0 +1,2 @@
+type KeyType int
+type ValueType int

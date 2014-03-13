@@ -1,6 +1,10 @@
 package commands
 
-type CommandList map[Slot]*Command
+import (
+	"datatypes"
+)
+
+type CommandList map[datatypes.Slot]*Command
 type Deps map[KeyType][]uint32
 
 type Data struct {
@@ -30,7 +34,7 @@ func (d *Data) maxSeq(A []uint32) uint32 {
 	var max uint32 = 0
 	for i, v := range(A) {
 		if v > 0 {
-			S := Slot{i, v}
+			S := datatypes.Slot{i, v}
 			seq := d.cmds[S].Seq
 			if seq > max {
 				max = seq

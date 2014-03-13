@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"commands"
+	"datatypes"
 	"listener"
 	"message"
 	"replicainfo"
@@ -110,7 +111,7 @@ func Initialize(port int, nreplica int) (s *State, err error) {
 	s.executeCommands = make(chan *commands.Command, CHANSIZE)
 	s.priorityExecuteCommands = make(chan *commands.Command, CHANSIZE)
 
-	gob.Register(commands.Slot{})
+	gob.Register(datatypes.Slot{})
 
 	return
 }
@@ -405,7 +406,12 @@ func (s *State) ProcessExecute() {
 			cmd = t
 		}
 		//fmt.Println(&cmd)
-		s.Data.BuildGraph(cmd)
-		//fmt.Println(g)
+		g := s.Data.BuildGraph(cmd)
+		//g.Print()
+		//comps := g.SCC()
+		g.SCC()
+		/*for k := range(comps) {
+			k.Print()
+		}*/
 	}
 }
