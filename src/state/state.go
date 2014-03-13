@@ -272,6 +272,7 @@ func (s *State) ProcessIncoming() {
 		case t := <-s.commitCommandsIn:
 			//fmt.Println("GOT COMMIT: ", t)
 			s.Data.HandleCommit(t)
+			s.executeCommands <- t
 		case t := <-s.okCommandsIn:
 			if t.Accepted {
 				//fmt.Println("GOT ACCEPT OK: ", t)
@@ -398,6 +399,7 @@ func (s *State) ProcessOutgoing() {
 
 func (s *State) ProcessExecute() {
 	var cmd *commands.Command
+	go s.Data.ExecuteComponents()
 	for {
 		select {
 		case t := <-s.priorityExecuteCommands:
@@ -405,13 +407,7 @@ func (s *State) ProcessExecute() {
 		case t := <-s.executeCommands:
 			cmd = t
 		}
-		//fmt.Println(&cmd)
 		g := s.Data.BuildGraph(cmd)
-		//g.Print()
-		//comps := g.SCC()
 		g.SCC()
-		/*for k := range(comps) {
-			k.Print()
-		}*/
 	}
 }

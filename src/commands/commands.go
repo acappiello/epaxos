@@ -29,3 +29,19 @@ type Command struct {
 	Executed  bool
 	ClientId  int64
 }
+
+type Commands []*Command
+
+func (A Commands) Len() int {
+	return len(A)
+}
+
+func (A Commands) Swap(i, j int) {
+	tmp := A[i]
+	A[i] = A[j]
+	A[j] = tmp
+}
+
+func (A Commands) Less(i, j int) bool {
+	return A[i].Seq < A[j].Seq
+}

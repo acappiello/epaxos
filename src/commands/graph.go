@@ -8,6 +8,7 @@ import (
 )
 
 type Graph map[datatypes.Slot] *datatypes.Vertex
+type Component map[datatypes.Slot] bool
 
 func (d *Data) BuildGraph(cmd *Command) Graph {
 	g := make(Graph)
@@ -37,16 +38,14 @@ func (d *Data) addGraphDeps(cmd *Command, g Graph) {
 	}
 }
 
-func (g *Graph) SCC() map[*Graph] bool {
+func (g *Graph) SCC() {
 	index := 0
 	S := stack.NewStack(100)
-	comps := make(map[*Graph] bool)
 	for _, v := range(*g) {
 		if v.Index == -1 {
-			g.strongconnect(v, S, &index, comps)
+			g.strongconnect(v, S, &index)
 		}
 	}
-	return comps
 }
 
 func min(x, y int) int {
@@ -57,7 +56,7 @@ func min(x, y int) int {
 }
 
 func (g *Graph) strongconnect(v *datatypes.Vertex, S *stack.Stack,
-	index *int, comps map[*Graph] bool) {
+	index *int) {
 	v.Index = *index
 	v.Lowlink = *index
 	*index++
@@ -67,7 +66,7 @@ func (g *Graph) strongconnect(v *datatypes.Vertex, S *stack.Stack,
 	for k := range(v.Adj) {
 		w := (*g)[k]
 		if w.Index == -1 {
-			g.strongconnect(w, S, index, comps)
+			g.strongconnect(w, S, index)
 			v.Lowlink = min(v.Lowlink, w.Lowlink)
 		} else if (w.InStack) {
 			v.Lowlink = min(v.Lowlink, w.Index)
@@ -75,7 +74,7 @@ func (g *Graph) strongconnect(v *datatypes.Vertex, S *stack.Stack,
 	}
 
 	if v.Lowlink == v.Index {
-		comp := make(map[datatypes.Slot] bool)
+		comp := make(Component)
 		w := S.Pop()
 		w.InStack = false
 		comp[w.Label] = true
@@ -84,11 +83,11 @@ func (g *Graph) strongconnect(v *datatypes.Vertex, S *stack.Stack,
 			w.InStack = false
 			comp[w.Label] = true
 		}
-		scc := g.buildSCC(comp)
-		comps[scc] = true
+		componentsToExecute <- comp
 	}
 }
 
+// Don't actually need this.
 func (g *Graph) buildSCC(V map[datatypes.Slot] bool) *Graph {
 	c := make(Graph)
 	for v := range(V) {

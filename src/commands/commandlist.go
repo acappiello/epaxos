@@ -1,22 +1,31 @@
 package commands
 
 import (
+	"sort"
+
 	"datatypes"
 )
 
 type CommandList map[datatypes.Slot]*Command
+type Records map[KeyType] ValueType
 type Deps map[KeyType][]uint32
 
 type Data struct {
 	cmds     CommandList
+	rec      Records
 	deps     Deps
 	nreplica int
 	id       int
 }
 
+const CHANSIZE int = 100000
+
+var componentsToExecute chan Component = make(chan Component, CHANSIZE)
+
 func InitData(nreplica int, id int) *Data {
 	d := new(Data)
 	d.cmds = make(CommandList)
+	d.rec = make(Records)
 	d.deps = make(Deps)
 	d.nreplica = nreplica
 	d.id = id
@@ -124,4 +133,30 @@ func (d *Data) HandleAcceptOk(cmd *Command) int {
 func (d *Data) HandleCommit(cmd *Command) {
 	thisCmd := d.cmds[cmd.S]
 	thisCmd.Committed = true
+}
+
+func (d *Data) execute(cmd *Command) {
+	switch(cmd.R) {
+	case READ:
+		cmd.Value = d.rec[cmd.Key]
+	case EXECUTE:
+	case EXECUTEANDREAD:
+	}
+	cmd.Executed = true
+}
+
+func (d *Data) ExecuteComponents() {
+	for {
+		c := <-componentsToExecute
+		cmds := make(Commands, len(c))
+		i := 0
+		for S := range(c) {
+			cmds[i] = d.cmds[S]
+			i++
+		}
+		sort.Sort(cmds)
+		for _, cmd := range(cmds) {
+			d.execute(cmd)
+		}
+	}
 }
