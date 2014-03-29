@@ -2,26 +2,27 @@ ePaxos
 ======
 
 An implementation of ePaxos in Go.
-A senior thesis research project by Alex Cappiello.
+A research project by Alex Cappiello.
 
 Current State
 -------------
 
-Dependencies are added upon receiving a new request, but they are not
-subsequently handled yet.
+The core of the algorithm is mostly implemented, but it's a long way from being
+useful. I'm not actively working on this and might not get back to it.
 
 Not Yet Implemented
 -------------------
 
-A lot...
+Cleaning up old commands and replica recovery is not handled. Performance also
+needs a lot of help.
 
 Compilation
 -----------
 
 Instead of committing the generated marshal/unmarahal code, it is generated,
 cloning gobin-codegen if not present. These must be explicitly regenerated if
-the underlying code is changed. There is currently a bug such that "commands"
-needs to be added to the imports of message_marshal.go
+the underlying code is changed. The stub generator doesn't import some things
+that need to be, so there are patches for that.
 ```
 make marshal
 ```
@@ -50,4 +51,3 @@ External Libraries
 ------------------
 
 * Stub Generator: https://code.google.com/p/gobin-codegen/
-* Set Type: https://github.com/deckarep/golang-set
